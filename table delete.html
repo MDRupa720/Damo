@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Table Delete | View & Delete</title>
+  <style>
+    :root{
+      --border:#e5e7eb;
+      --bg:#ffffff;
+      --muted:#6b7280;
+      --hover:#f8fafc;
+      --focus:#3b82f6;
+      --header:#f9fafb;
+      --success-bg:#ecfdf5;
+      --success-border:#10b981;
+      --success-text:#065f46;
+      --error-bg:#fef2f2;
+      --error-border:#ef4444;
+      --error-text:#991b1b;
+      --warn-bg:#fff7ed;
+      --warn-border:#fb923c;
+      --warn-text:#9a3412;
+    }
+    *{ box-sizing: border-box; }
+    body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 20px; color: #111827; background: var(--bg); }
+    h2 { margin: 0 0 12px; font-weight: 700; }
+
+    .top-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+    select, button {
+      padding: 9px 12px; font-size: 14px; border-radius: 8px; border: 1px solid var(--border); background: #fff;
+    }
+    .btn { cursor: pointer; font-weight: 600; transition: .15s ease; }
+    .btn:focus { outline: none; box-shadow: 0 0 0 3px rgba(59,130,246,.35); }
+    .btn-danger { background: #ef4444; border-color: #ef4444; color: #fff; }
+    .btn-danger:hover { filter: brightness(0.98); }
+    .btn-danger:active { transform: translateY(0.5px); }
+    .btn-danger.armed { background:#b91c1c; border-color:#991b1b; }
+
+    .message { margin: 10px 0; padding: 10px 12px; border-radius: 8px; display: none; border: 1px solid transparent; }
+    .message.show { display: block; }
+    .message.success { background: var(--success-bg); color: var(--success-text); border-color: var(--success-border); }
+    .message.error   { background: var(--error-bg); color: var(--error-text); border-color: var(--error-border); }
+    .message.warn    { background: var(--warn-bg); color: var(--warn-text); border-color: var(--warn-border); }
+
+    .placeholder {
+      color: var(--muted); font-size: 14px; padding: 10px 0; display:flex; align-items:center; gap:8px;
+    }
+    .spinner {
+      width:16px; height:16px; border:2px solid #cbd5e1; border-top-color:#0ea5e9; border-radius:50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .table-wrapper {
+      border: 1px solid var(--border); border-radius: 10px; overflow: auto; max-height: 70vh;
+      box-shadow: 0 1px 2px rgba(0,0,0,.05);
+    }
+    table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
+    thead th { position: sticky; top: 0; background: var(--header); z-index: 3; }
+    th, td { border: 1px solid var(--border); padding: 8px; text-align: left; min-width: 120px; font-size: 14px; vertical-align: top; background:#fff; }
+    tbody tr:nth-child(even) td { background: #fcfcfd; }
+    tbody td:hover { background: var(--hover); }
+
+    /* Excel-like row number (left) sticky + corner cell */
+    .row-header { position: sticky; left: 0; z-index: 4; background: var(--header); min-width: 64px; text-align: center; font-weight: 600; }
+    .corner { position: sticky; top: 0; left: 0; z-index: 6; background: var(--header); }
+
+    /* Scrollbar styling (optional) */
+    .table-wrapper::-webkit-scrollbar { height: 10px; width: 10px; }
+    .table-wrapper::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+    .table-wrapper::-webkit-scrollbar-track { background: #f1f5f9; }
+  </style>
+</head>
+<body>
+  <h2>ডেটা দেখুন ও ডিলিট করুন</h2>
+
+  <div class="top-bar">
+    <label for="classSelect"><strong>ক্লাস:</strong></label>
+    <select id="classSelect"></select>
+    <button id="deleteBtn" class="btn btn-danger">🗑️ Delete</button>
+  </div>
+
+  <div id="msgBox" class="message" role="alert" aria-live="polite"></div>
+
+  <div id="placeholder" class="placeholder">
+    একটি ক্লাস সিলেক্ট করুন।
+  </div>
+
+  <div class="table-wrapper" id="tableWrap" style="display:none;">
+    <table id="dataTable">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <script>
+    const classes = ["Play", "Nursery", "Kg", "1","2","3","4","5","6","7","8","9","10"];
+    const classSelect = document.getElementById('classSelect');
+    const deleteBtn   = document.getElementById('deleteBtn');
+    const msgBox      = document.getElementById('msgBox');
+    const tableWrap   = document.getElementById('tableWrap');
+    const placeholder = document.getElementById('placeholder');
+    const table       = document.getElementById('dataTable');
+    const thead       = table.querySelector('thead');
+    const tbody       = table.querySelector('tbody');
+
+    let deleteArmed = false;
+    let deleteTimer = null;
+
+    // Populate dropdown
+    function populateClasses() {
+      classes.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        classSelect.appendChild(opt);
+      });
+      classSelect.value = "Play";
+    }
+
+    function showMessage(text, type='success') {
+      msgBox.textContent = text;
+      msgBox.className = `message show ${type}`;
+      setTimeout(() => msgBox.className = 'message', 3500);
+    }
+
+    function setLoading(isLoading, text='লোড হচ্ছে...') {
+      if (isLoading) {
+        placeholder.style.display = 'flex';
+        tableWrap.style.display = 'none';
+        placeholder.innerHTML = `<span class="spinner"></span> <span>${text}</span>`;
+      } else {
+        placeholder.innerHTML = 'এখনো কোনো রেজাল্ট আনা হয়নি 🙂।';
+      }
+    }
+
+    // Build a nice sheet-like table with sticky row numbers
+    function buildTableFromData(data) {
+      const headers = Array.isArray(data?.headers) ? data.headers : [];
+      const rows    = Array.isArray(data?.rows) ? data.rows : [];
+
+      // Determine column count
+      const colCount = headers.length || (rows[0]?.length || 0);
+
+      // No data
+      if (!colCount && !rows.length) {
+        tableWrap.style.display = 'none';
+        placeholder.style.display = 'block';
+        placeholder.textContent = 'এখনো কোনো রেজাল্ট আনা হয়নি 🙂।';
+        return;
+      }
+
+      // Header
+      thead.innerHTML = '';
+      const trHead = document.createElement('tr');
+
+      // corner cell
+      const corner = document.createElement('th');
+      corner.className = 'corner row-header';
+      corner.textContent = '#';
+      trHead.appendChild(corner);
+
+      for (let c = 0; c < colCount; c++) {
+        const th = document.createElement('th');
+        th.textContent = headers[c] ?? `কলাম ${c+1}`;
+        trHead.appendChild(th);
+      }
+      thead.appendChild(trHead);
+
+      // Body
+      tbody.innerHTML = '';
+      rows.forEach((r, idx) => {
+        const tr = document.createElement('tr');
+
+        // row number (sticky left)
+        const rh = document.createElement('th');
+        rh.className = 'row-header';
+        rh.scope = 'row';
+        rh.textContent = idx + 1;
+        tr.appendChild(rh);
+
+        for (let c = 0; c < colCount; c++) {
+          const td = document.createElement('td');
+          td.textContent = (r && r[c]) ? r[c] : '';
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      });
+
+      placeholder.style.display = 'none';
+      tableWrap.style.display = 'block';
+    }
+
+    async function loadData() {
+      const className = classSelect.value;
+      setLoading(true);
+      try {
+        const res = await fetch('data_table.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'read', className })
+        });
+        const data = await res.json();
+        if (data.success) {
+          buildTableFromData(data.data || {});
+        } else {
+          placeholder.style.display = 'block';
+          tableWrap.style.display = 'none';
+          placeholder.textContent = data.message || 'এখনো কোনো রেজাল্ট আনা হয়নি 🙂।';
+        }
+      } catch (e) {
+        showMessage('সার্ভারে পৌঁছানো যায়নি।', 'error');
+      }
+    }
+
+    async function deleteFile() {
+      const className = classSelect.value;
+      try {
+        const res = await fetch('data_table.php', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'delete', className })
+        });
+        const data = await res.json();
+        if (data.success) {
+          showMessage(data.message || 'ফাইল ডিলিট করা হয়েছে ✅', 'success');
+          // Clear table view
+          tableWrap.style.display = 'none';
+          placeholder.style.display = 'block';
+          placeholder.textContent = 'এখনো কোনো রেজাল্ট আনা হয়নি 🙂।';
+        } else {
+          showMessage(data.message || 'ডিলিট করা যায়নি।', 'error');
+        }
+      } catch (e) {
+        showMessage('সার্ভারে পৌঁছানো যায়নি।', 'error');
+      }
+    }
+
+    function handleDeleteClick() {
+      if (!deleteArmed) {
+        deleteArmed = true;
+        deleteBtn.classList.add('armed');
+        deleteBtn.textContent = '⚠️ Confirm Delete';
+        showMessage('সতর্কতা: আবার Delete ক্লিক করলে ফাইল স্থায়ীভাবে ডিলিট হবে!', 'warn');
+        deleteTimer = setTimeout(() => {
+          deleteArmed = false;
+          deleteBtn.classList.remove('armed');
+          deleteBtn.textContent = '🗑️ Delete';
+        }, 6000);
+      } else {
+        clearTimeout(deleteTimer);
+        deleteArmed = false;
+        deleteBtn.classList.remove('armed');
+        deleteBtn.textContent = '🗑️ Delete';
+        deleteFile();
+      }
+    }
+
+    // Init
+    populateClasses();
+    classSelect.addEventListener('change', loadData);
+    deleteBtn.addEventListener('click', handleDeleteClick);
+    // Load initial
+    loadData();
+  </script>
+</body>
+</html>

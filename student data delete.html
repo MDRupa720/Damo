@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Student Delete & List</title>
+  <style>
+    :root { --bg:#f6f7fb; --card:#fff; --text:#1f2937; --muted:#6b7280; --border:#e5e7eb; --danger:#ef4444; --danger-hover:#dc2626; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,Arial;background:var(--bg);color:var(--text)}
+    .container{max-width:950px;margin:28px auto;padding:0 16px}
+    h1{font-size:22px;margin:0 0 14px}
+    .search-wrap{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.03);margin-top:8px}
+    .search-row{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+    .search-row input[type="text"]{flex:1;height:36px;border:1px solid var(--border);border-radius:8px;padding:0 12px;font-size:14px;outline:none}
+    .search-row .danger{background:var(--danger);color:#fff;border:none;height:36px;border-radius:8px;padding:0 12px;cursor:pointer}
+    .search-row .danger:hover{background:var(--danger-hover)}
+    .filters-row{display:flex;justify-content:space-between;align-items:center}
+    .filters-row .left,.filters-row .right{display:flex;align-items:center;gap:8px}
+    label{font-size:13px;color:var(--muted)}
+    /* 50x20 px dropdowns */
+    .tiny-select{
+      width:50px;height:20px;line-height:20px;font-size:12px;padding:0 2px;border:1px solid var(--border);border-radius:4px;background:#fff;appearance:none;
+      background-image:linear-gradient(45deg,transparent 50%,#999 50%),linear-gradient(135deg,#999 50%,transparent 50%);
+      background-position:calc(100% - 12px) 8px, calc(100% - 6px) 8px; background-size:6px 6px,6px 6px; background-repeat:no-repeat;
+    }
+    .meta-row{display:flex;justify-content:space-between;align-items:center;margin:10px 2px;color:var(--muted);font-size:13px}
+    .badge{display:inline-block;padding:2px 8px;border:1px solid var(--border);border-radius:999px;font-size:12px;color:var(--muted)}
+    .list{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr;gap:10px}
+    .item{display:flex;gap:12px;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px}
+    .avatar{width:44px;height:44px;border-radius:8px;object-fit:cover;flex:0 0 44px;border:1px solid var(--border);background:#fafafa}
+    .info{display:flex;flex-direction:column;gap:4px}
+    .name{font-weight:600}
+    .sub{color:var(--muted);font-size:13px}
+    .spacer{flex:1}
+    .btn-del{background:var(--danger);color:#fff;border:none;border-radius:8px;padding:8px 10px;cursor:pointer;font-size:12px}
+    .btn-del:hover{background:var(--danger-hover)}
+    .empty,.error,.loading{text-align:center;color:var(--muted);padding:18px 0;font-size:14px}
+    .top-links{margin-bottom:8px}
+    .top-links a{font-size:13px;color:#2563eb;text-decoration:none}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>স্টুডেন্ট লিস্ট ও ডিলিট</h1>
+    <div class="top-links">
+      <a href="student%20data%20add.html">← Add পেজে যান</a>
+    </div>
+
+    <div class="search-wrap">
+      <div class="search-row">
+        <input id="searchInput" type="text" placeholder="নাম দিয়ে খুঁজুন (যেমন: Akash)" aria-label="Search by name"/>
+        <button id="btnDeleteAll" class="danger" title="সব .txt ফাইল ডিলিট">All Delete</button>
+      </div>
+      <div class="filters-row">
+        <div class="left">
+          <label for="rollFilter">Roll:</label>
+          <select id="rollFilter" class="tiny-select" title="Roll ফিল্টার">
+            <option value="All">All</option>
+            <!-- 1–100 যোগ হবে -->
+          </select>
+        </div>
+        <div class="right">
+          <label for="classFilter">Class:</label>
+          <select id="classFilter" class="tiny-select" title="Class ফিল্টার">
+            <option value="All">All</option>
+            <option value="Play">Play</option>
+            <option value="Nursery">Nursery</option>
+            <option value="Kg">Kg</option>
+            <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+            <option value="4">4</option><option value="5">5</option><option value="6">6</option>
+            <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+            <option value="10">10</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="meta-row">
+      <div id="resultCount" class="badge">মোট: 0</div>
+      <div id="activeFilters" class="sub"></div>
+    </div>
+
+    <ul id="resultList" class="list"></ul>
+    <div id="stateMsg" class="empty" style="display:none;"></div>
+  </div>
+
+  <script>
+    const API_URL = 'form.php';
+
+    const resultList = document.getElementById('resultList');
+    const stateMsg = document.getElementById('stateMsg');
+    const resultCount = document.getElementById('resultCount');
+    const activeFilters = document.getElementById('activeFilters');
+    const searchInput = document.getElementById('searchInput');
+    const rollFilter = document.getElementById('rollFilter');
+    const classFilter = document.getElementById('classFilter');
+    const btnDeleteAll = document.getElementById('btnDeleteAll');
+
+    // Roll 1–100 যোগ করুন
+    (function fillRolls(){
+      const frag = document.createDocumentFragment();
+      for (let i = 1; i <= 100; i++) {
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = String(i);
+        frag.appendChild(opt);
+      }
+      rollFilter.appendChild(frag);
+    })();
+
+    function debounce(fn, delay = 300){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), delay); }; }
+    function showState(msg, type='empty'){ stateMsg.textContent = msg; stateMsg.className = type; stateMsg.style.display = 'block'; }
+    function clearState(){ stateMsg.style.display = 'none'; stateMsg.textContent = ''; }
+    function setCount(n){ resultCount.textContent = 'মোট: ' + n; }
+    function setActiveFilters(){
+      const s = searchInput.value.trim(), c = classFilter.value, r = rollFilter.value;
+      const bits = [];
+      if (s) bits.push('নাম: "'+s+'"');
+      if (c !== 'All') bits.push('ক্লাস: '+c);
+      if (r !== 'All') bits.push('রোল: '+r);
+      activeFilters.textContent = bits.length ? 'ফিল্টার: ' + bits.join(' · ') : '';
+    }
+
+    function makeDeleteButton(filename) {
+      const btn = document.createElement('button');
+      btn.className = 'btn-del';
+      btn.textContent = 'Delete';
+      btn.title = filename;
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm(`"${filename}" ফাইলটি ডিলিট করতে চান?`)) return;
+        try {
+          const form = new URLSearchParams({ action: 'delete', filename });
+          const res = await fetch(API_URL, { method: 'POST', body: form });
+          const data = await res.json();
+          if (!data.success) throw new Error(data.message || 'Failed');
+          fetchData();
+        } catch (err) {
+          console.error(err);
+          alert('ডিলিট করা যায়নি।');
+        }
+      });
+      return btn;
+    }
+
+    function renderList(students) {
+      resultList.innerHTML = '';
+      if (!students || !students.length) {
+        setCount(0);
+        showState('অনুগ্রহ করে সঠিক নাম এবং সঠিক রোল নাম্বার দিন তাহলে খুঁজতে সহজ হবে 🙂।', 'empty');
+        return;
+      }
+      clearState();
+      setCount(students.length);
+
+      const frag = document.createDocumentFragment();
+      for (const s of students) {
+        const li = document.createElement('li');
+        li.className = 'item';
+
+        const img = document.createElement('img');
+        img.className = 'avatar';
+        img.alt = 'Student';
+        img.src = 'student.png';
+
+        const info = document.createElement('div');
+        info.className = 'info';
+
+        const name = document.createElement('div');
+        name.className = 'name';
+        name.textContent = s.name;
+
+        const sub = document.createElement('div');
+        sub.className = 'sub';
+        sub.textContent = 'শ্রেণি: ' + s['class'] + ' · রোল: ' + s.roll;
+
+        const spacer = document.createElement('div');
+        spacer.className = 'spacer';
+
+        info.appendChild(name);
+        info.appendChild(sub);
+        li.appendChild(img);
+        li.appendChild(info);
+        li.appendChild(spacer);
+        li.appendChild(makeDeleteButton(s.filename));
+
+        frag.appendChild(li);
+      }
+      resultList.appendChild(frag);
+    }
+
+    async function fetchData() {
+      setActiveFilters();
+      showState('লোড হচ্ছে...', 'loading');
+
+      const params = new URLSearchParams({
+        action: 'list',
+        search: searchInput.value.trim(),
+        class: classFilter.value,
+        roll: rollFilter.value,
+        _t: Date.now()
+      });
+
+      try {
+        const res = await fetch(`${API_URL}?${params.toString()}`, { cache: 'no-store' });
+        if (!res.ok) throw new Error('Network error');
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || 'Server error');
+        renderList(data.students);
+      } catch (err) {
+        console.error(err);
+        showState('কিছু একটা সমস্যা হয়েছে। পরে আবার চেষ্টা করুন।', 'error');
+        setCount(0);
+      }
+    }
+
+    // ইভেন্টস
+    const debouncedFetch = debounce(fetchData, 300);
+    searchInput.addEventListener('input', debouncedFetch);
+    rollFilter.addEventListener('change', fetchData);
+    classFilter.addEventListener('change', fetchData);
+
+    // All Delete
+    btnDeleteAll.addEventListener('click', async () => {
+      if (!confirm('নিশ্চিত? /student_data/ ফোল্ডারের সব .txt ফাইল ডিলিট হবে!')) return;
+      try {
+        const form = new URLSearchParams({ action: 'delete_all' });
+        const res = await fetch(API_URL, { method: 'POST', body: form });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || 'Failed');
+        alert(`মোট ${data.deleted} টি ফাইল ডিলিট হয়েছে।`);
+        fetchData();
+      } catch (e) {
+        console.error(e);
+        alert('ডিলিট করা যায়নি, পরে চেষ্টা করুন।');
+      }
+    });
+
+    // প্রথম লোডে ডেটা
+    fetchData();
+  </script>
+</body>
+</html>
